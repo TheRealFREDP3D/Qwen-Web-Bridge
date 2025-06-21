@@ -216,16 +216,19 @@ export class QwenProxyServer {
       throw new Error("Server is already running");
     }
 
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
+      // Ensure client is initialized before starting server
+      try {
+        await this.qwenClient.initialize();
+      } catch (error) {
+        console.error("Failed to initialize Qwen client:", error);
+        reject(error);
+        return;
+      }
+
       this.server = this.app.listen(this.port, () => {
         this.isServerRunning = true;
         console.log(`Qwen Proxy server started on port ${this.port}`);
-
-        // Initialize Qwen client
-        this.qwenClient.initialize().catch((error) => {
-          console.error("Failed to initialize Qwen client:", error);
-        });
-
         resolve();
       });
 

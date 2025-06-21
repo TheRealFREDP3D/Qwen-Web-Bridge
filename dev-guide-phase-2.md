@@ -3,11 +3,13 @@
 ## Project Analysis Summary
 
 The Qwen Proxy VSCode Extension creates a bridge between VSCode and the Qwen AI service by:
+
 1. Running an Express server that provides OpenAI-compatible API endpoints
 2. Using Puppeteer to automate browser interactions with the Qwen web interface
 3. Exposing VSCode commands to manage the proxy server
 
 The core components are:
+
 - `extension.ts`: VSCode extension entry point with command registration
 - `server.ts`: Express server with OpenAI-compatible endpoints
 - `qwen-client.ts`: Puppeteer-based client for Qwen web interface interaction
@@ -80,16 +82,19 @@ The project has completed **Phase 1 (Basic Setup)** and is now moving to **Phase
 ### Week 1: Puppeteer Connection Testing
 
 #### Day 1-2: Setup Testing Environment
-- [ ] Create `test/qwen-client.test.ts` file
-- [ ] Implement basic connection tests
-- [ ] Add manual testing documentation
+
+- [x] Create `test/qwen-client.test.ts` file
+- [x] Implement basic connection tests
+- [x] Add manual testing documentation
 
 #### Day 3-4: Enhance Debugging
-- [ ] Add detailed logging to Qwen client
-- [ ] Implement screenshot capture for debugging
+
+- [x] Add detailed logging to Qwen client
+- [x] Implement screenshot capture for debugging
 - [ ] Create debugging guide for common issues
 
 #### Day 5: Review and Refine
+
 - [ ] Test on different environments
 - [ ] Document any environment-specific issues
 - [ ] Refine the testing approach based on findings
@@ -97,19 +102,31 @@ The project has completed **Phase 1 (Basic Setup)** and is now moving to **Phase
 ### Week 2: Message Sending and Authentication
 
 #### Day 1-2: Message Sending Tests
-- [ ] Implement tests for basic message sending
-- [ ] Test streaming functionality
+
+- [ ] Implement tests for basic message sending (Partial: streaming and message sending implemented in code, but not fully tested)
+- [ ] Test streaming functionality (Partial: implemented in code, but not fully tested)
 - [ ] Verify handling of different message formats
 
 #### Day 3-4: Authentication Testing
-- [ ] Test cookie handling
+
+- [x] Test cookie handling
 - [ ] Verify manual login process
 - [ ] Implement authentication error detection
 
 #### Day 5: Selector Debugging
-- [ ] Create selector testing utility
+
+- [ ] Create selector testing utility (Partial: selector fallback logic present, but no dedicated utility)
 - [ ] Test selectors against the live Qwen website
 - [ ] Document selector-related issues and solutions
+
+## Success Metrics for Phase 2
+
+- [x] Puppeteer successfully connects to Qwen website
+- [ ] Basic message sending works reliably (Partial: implemented, not fully tested)
+- [ ] Authentication flow is robust and user-friendly (Partial: cookie handling implemented)
+- [ ] Selectors are resilient to minor UI changes (Partial: fallback logic present, no utility)
+- [ ] Comprehensive test coverage for the Qwen client (Partial: connection tests present, message/streaming tests missing)
+- [x] Clear documentation for testing and troubleshooting (manual testing guide present)
 
 ## Code Implementations
 
@@ -223,12 +240,38 @@ private async initialize(): Promise<void> {
 
 ## Success Metrics for Phase 2
 
-- [ ] Puppeteer successfully connects to Qwen website
-- [ ] Basic message sending works reliably
-- [ ] Authentication flow is robust and user-friendly
-- [ ] Selectors are resilient to minor UI changes
-- [ ] Comprehensive test coverage for the Qwen client
-- [ ] Clear documentation for testing and troubleshooting
+- [x] Puppeteer successfully connects to Qwen website
+- [ ] Basic message sending works reliably (Partial: implemented, not fully tested)
+- [ ] Authentication flow is robust and user-friendly (Partial: cookie handling implemented)
+- [ ] Selectors are resilient to minor UI changes (Partial: fallback logic present, no utility)
+- [ ] Comprehensive test coverage for the Qwen client (Partial: connection tests present, message/streaming tests missing)
+- [x] Clear documentation for testing and troubleshooting (manual testing guide present)
+
+## Next Step Detailed Checklist (Phase 2)
+
+### 1. Expand Automated Test Coverage
+
+- [ ] Add unit/integration tests for `sendMessage` in `test/qwen-client.test.ts`
+- [ ] Add unit/integration tests for `sendMessageStream` in `test/qwen-client.test.ts`
+- [ ] Verify handling of different message formats (single, multi-turn, etc.)
+- [ ] Add tests to simulate selector changes and ensure fallback logic works
+
+### 2. Improve Authentication Flow
+
+- [ ] Test the "Open Browser to Login" command and document the process
+- [ ] Add clear error messages for authentication failures
+- [ ] Implement automatic detection for login requirements
+
+### 3. Debugging and Documentation
+
+- [ ] Create a debugging guide for common Puppeteer/browser issues
+- [ ] Add troubleshooting steps for common authentication issues
+- [ ] Start a section in the docs for selector-related issues and solutions
+
+### 4. Selector Utility (Optional, if time allows)
+
+- [ ] Prototype a script or function to validate selectors against the live Qwen site
+- [ ] Add functionality to suggest alternative selectors when the primary ones fail
 
 ## Next Steps After Phase 2
 

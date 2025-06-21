@@ -58,6 +58,11 @@
           "type": "boolean",
           "default": true,
           "description": "Run browser in headless mode"
+        },
+        "qwen-proxy.enableScreenshots": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable automatic screenshot capture for each step. Disable to save disk space or in CI environments."
         }
       }
     }
@@ -100,7 +105,8 @@
       "**/test/**/*.test.ts"
     ],
     "moduleNameMapper": {
-      "^vscode$": "<rootDir>/test/__mocks__/vscode.js"
+      "^vscode$": "<rootDir>/test/__mocks__/vscode.js",
+      "^puppeteer$": "<rootDir>/test/__mocks__/puppeteer.js"
     }
   }
 }

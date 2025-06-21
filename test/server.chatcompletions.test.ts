@@ -20,4 +20,11 @@ describe("/v1/chat/completions endpoint", () => {
     expect(res.body).toHaveProperty("error");
     expect(res.body.error).toHaveProperty("message");
   });
+  it("POST /v1/chat/completions with valid body should return 200 and a response", async () => {
+    const res = await request(app)
+      .post("/v1/chat/completions")
+      .send({ messages: [{ role: "user", content: "Hello" }] });
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("choices");
+  });
 });

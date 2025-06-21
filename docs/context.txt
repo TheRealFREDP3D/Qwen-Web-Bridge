@@ -23,7 +23,7 @@ Qwen-Web-Bridge
 │   ├── qwen-client.ts
 │   ├── server.ts
 │   └── types.ts
-├── eslint.config,js
+├── eslint.config.js
 ├── package-lock.json
 ├── package.json
 ├── pyproject.toml
@@ -58,4 +58,3 @@ graph TD
 ```
 
 ## Analyzed Files
-

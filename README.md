@@ -76,6 +76,24 @@ sequenceDiagram
 
 ---
 
+## ⚙️ Configuration
+
+- `qwen-proxy.enableScreenshots` (boolean, default: false):
+  - If enabled, the extension will capture screenshots at key browser automation steps (e.g., after navigation, before submitting a message).
+  - Only the 20 most recent screenshots are retained; older screenshots are deleted automatically.
+  - Useful for debugging, but can consume disk space if left enabled.
+  - Recommended to keep disabled in CI or production environments.
+- All logs from QwenClient now appear in the VSCode Output panel under "QwenClient Output" (View → Output → QwenClient Output).
+
+---
+
+## 🧪 Testing
+
+- Unit tests for QwenClient now mock Puppeteer browser and page methods to simulate errors and edge cases, improving reliability and speed.
+- Screenshot retention policy: only the 20 most recent screenshots are kept; older ones are deleted automatically.
+
+---
+
 ## ⚠️ Considerations
 
 - Ensure you comply with the Terms of Service of any AI platform you interact with.
@@ -102,12 +120,43 @@ sequenceDiagram
 ## [0.3.0] - Unreleased
 
 ### Added
+
+- Automated Endpoint Tests: Introduced Jest and Supertest-based automated tests for server endpoints (`/health`, `/v1/models`, `/status`, `/v1/chat/completions`). Each endpoint has its own test file in the `test/` directory for clarity and maintainability.
+- VSCode Mocking for Tests: Added Jest manual mock for the `vscode` module to enable isolated server testing.
+- Testing Documentation: Updated setup-dev-guide.md with instructions for running and maintaining automated tests.
+
+### Changed
+
+- Refactored QwenClient: Major refactoring of the Qwen client for better organization. Replaced `playwright-core` with `puppeteer` to match project dependencies. The client is now more robust with distinct `initialize` and `cleanup` methods.
+
+### Fixed
+
+- TypeScript Configuration: Corrected TypeScript configuration to allow for DOM types, resolving compilation errors.
+
+### Added
+
+- Automated Endpoint Tests: Introduced Jest and Supertest-based automated tests for server endpoints (`/health`, `/v1/models`, `/status`, `/v1/chat/completions`). Each endpoint has its own test file in the `test/` directory for clarity and maintainability.
+- VSCode Mocking for Tests: Added Jest manual mock for the `vscode` module to enable isolated server testing.
+- Testing Documentation: Updated setup-dev-guide.md with instructions for running and maintaining automated tests.
+
+### Changed
+
+- Refactored QwenClient: Major refactoring of the Qwen client for better organization. Replaced `playwright-core` with `puppeteer` to match project dependencies. The client is now more robust with distinct `initialize` and `cleanup` methods.
+
+### Fixed
+
+- TypeScript Configuration: Corrected TypeScript configuration to allow for DOM types, resolving compilation errors.
+
+### Added
+
 - [ ]  (Add brief description of new features here)
 
 ### Changed
+
 - [ ] (Add brief description of changes here)
 
 ### Fixed
+
 - [ ] (Add brief description of bug fixes here)
 
 ---

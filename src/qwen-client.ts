@@ -35,75 +35,92 @@ export class QwenClient {
   private isInitialized: boolean = false;
   private config: vscode.WorkspaceConfiguration;
   private extensionContext: vscode.ExtensionContext;
+  private static readonly MAX_SCREENSHOTS = 20;
+  private static outputChannel: vscode.OutputChannel =
+    vscode.window.createOutputChannel("QwenClient");
+  private screenshotsEnabled: boolean;
 
   constructor(context: vscode.ExtensionContext) {
     this.config = vscode.workspace.getConfiguration("qwen-proxy");
     this.extensionContext = context;
+    this.screenshotsEnabled = this.config.get("enableScreenshots", false);
   }
 
   public async initialize(): Promise<void> {
     if (this.isInitialized) {
-      console.log("Qwen client is already initialized.");
+      QwenClient.outputChannel.appendLine(
+        "Qwen client is already initialized."
+      );
       return;
     }
 
-    console.log("[QwenClient] Initializing...");
+    QwenClient.outputChannel.appendLine("[QwenClient] Initializing...");
     try {
       const headless = this.config.get("headless", true)
         ? ("shell" as const)
         : (false as const);
       const executablePath = this.config.get<string>("browserExecutablePath");
 
-      console.log(`[QwenClient] Launching browser (headless: ${headless})`);
+      QwenClient.outputChannel.appendLine(
+        `[QwenClient] Launching browser (headless: ${headless})`
+      );
       this.browser = await puppeteer.launch({
         headless,
         executablePath: executablePath || undefined,
       });
-      console.log("[QwenClient] Browser launched.");
+      QwenClient.outputChannel.appendLine("[QwenClient] Browser launched.");
 
       this.page =
         (await this.browser.pages())[0] || (await this.browser.newPage());
-      console.log("[QwenClient] New page created.");
+      QwenClient.outputChannel.appendLine("[QwenClient] New page created.");
 
       await this.loadCookies();
-      console.log("[QwenClient] Cookies loaded.");
+      QwenClient.outputChannel.appendLine("[QwenClient] Cookies loaded.");
 
-      console.log("[QwenClient] Navigating to Qwen...");
+      QwenClient.outputChannel.appendLine("[QwenClient] Navigating to Qwen...");
       await this.page.goto("https://qwen.aliyun.com/chat", {
         waitUntil: "networkidle0",
       });
-      console.log("[QwenClient] Navigation complete.");
+      QwenClient.outputChannel.appendLine("[QwenClient] Navigation complete.");
 
-      // Take a screenshot after navigation
-      await this.takeScreenshot("after-navigation");
+      // Take a screenshot after navigation if enabled
+      if (this.screenshotsEnabled) {
+        await this.takeScreenshot("after-navigation");
+      }
 
       this.isInitialized = true;
-      console.log("[QwenClient] Qwen client initialized successfully.");
+      QwenClient.outputChannel.appendLine(
+        "[QwenClient] Qwen client initialized successfully."
+      );
     } catch (error: any) {
-      console.error("[QwenClient] Failed to initialize Qwen client:", error);
+      QwenClient.outputChannel.appendLine(
+        `[Error] [QwenClient] Failed to initialize Qwen client: ${error}`
+      );
       this.isInitialized = false;
       throw error;
     }
   }
 
   public async cleanup(): Promise<void> {
-    console.log("[QwenClient] Cleaning up...");
+    QwenClient.outputChannel.appendLine("[QwenClient] Cleaning up...");
     try {
       if (this.isInitialized) {
-        console.log("[QwenClient] Saving cookies...");
+        QwenClient.outputChannel.appendLine("[QwenClient] Saving cookies...");
         await this.saveCookies();
-        console.log("[QwenClient] Cookies saved.");
+        QwenClient.outputChannel.appendLine("[QwenClient] Cookies saved.");
       }
       if (this.browser) {
-        console.log("[QwenClient] Closing browser...");
+        QwenClient.outputChannel.appendLine("[QwenClient] Closing browser...");
         await this.browser.close();
-        console.log("[QwenClient] Browser closed.");
+        QwenClient.outputChannel.appendLine("[QwenClient] Browser closed.");
       }
     } finally {
       this.browser = undefined;
       this.page = undefined;
       this.isInitialized = false;
-      console.log("[QwenClient] Qwen client cleaned up");
+      QwenClient.outputChannel.appendLine(
+        "[QwenClient] Qwen client cleaned up"
+      );
     }
   }
 
@@ -133,14 +150,18 @@ export class QwenClient {
     }
 
     const prompt = this.convertMessagesToPrompt(request.messages);
-    console.log("[QwenClient] Sending message:", prompt);
+    QwenClient.outputChannel.appendLine(
+      `[QwenClient] Sending message: ${prompt}`
+    );
     const filled = await this.fillChatInput(prompt);
     if (!filled) {
       throw new Error("Failed to find chat input field.");
     }
 
-    // Take a screenshot before submitting the message
-    await this.takeScreenshot("before-submit");
+    // Take a screenshot before submitting the message if enabled
+    if (this.screenshotsEnabled) {
+      await this.takeScreenshot("before-submit");
+    }
 
     await this.submitMessage();
 
@@ -158,14 +179,18 @@ export class QwenClient {
     }
 
     const prompt = this.convertMessagesToPrompt(request.messages);
-    console.log("[QwenClient] Sending message (streaming):", prompt);
+    QwenClient.outputChannel.appendLine(
+      `[QwenClient] Sending message (streaming): ${prompt}`
+    );
     const filled = await this.fillChatInput(prompt);
     if (!filled) {
       throw new Error("Failed to find chat input field.");
     }
 
-    // Take a screenshot before submitting the message
-    await this.takeScreenshot("before-submit-streaming");
+    // Take a screenshot before submitting the message if enabled
+    if (this.screenshotsEnabled) {
+      await this.takeScreenshot("before-submit-streaming");
+    }
 
     await this.submitMessage();
     await this.waitForStreamingResponse(onChunk);
@@ -212,10 +237,12 @@ export class QwenClient {
             undefined
           );
         } catch (e) {
-          console.error("Failed to delete cookie file", e);
+          QwenClient.outputChannel.appendLine(
+            `[Error] Failed to delete cookie file: ${e}`
+          );
         }
       }
-      console.log("Cookies cleared.");
+      QwenClient.outputChannel.appendLine("Cookies cleared.");
     }
   }
 
@@ -354,7 +381,9 @@ export class QwenClient {
 
   private async takeScreenshot(name: string): Promise<void> {
     if (!this.page) {
-      console.warn("[QwenClient] takeScreenshot: page is not initialized");
+      QwenClient.outputChannel.appendLine(
+        "[Warning] [QwenClient] takeScreenshot: page is not initialized"
+      );
       return;
     }
     try {
@@ -362,10 +391,58 @@ export class QwenClient {
         this.extensionContext.globalStorageUri,
         `screenshot-${name}-${Date.now()}.png`
       );
-      await this.page.screenshot({ path: screenshotPath.fsPath });
-      console.log(`[QwenClient] Screenshot saved: ${screenshotPath.fsPath}`);
+      await this.page.screenshot({ path: screenshotPath.fsPath as any });
+      QwenClient.outputChannel.appendLine(
+        `[QwenClient] Screenshot saved: ${screenshotPath.fsPath}`
+      );
+
+      // Retention policy: limit the number of screenshots
+      const files = await vscode.workspace.fs.readDirectory(
+        this.extensionContext.globalStorageUri
+      );
+      const screenshotFiles = files
+        .filter(
+          ([file, type]) =>
+            type === vscode.FileType.File &&
+            file.startsWith("screenshot-") &&
+            file.endsWith(".png")
+        )
+        .map(([file]) => file);
+
+      if (screenshotFiles.length > QwenClient.MAX_SCREENSHOTS) {
+        // Sort by timestamp in filename (assumes format: screenshot-<name>-<timestamp>.png)
+        screenshotFiles.sort((a, b) => {
+          const aMatch = a.match(/-(\d+)\.png$/);
+          const bMatch = b.match(/-(\d+)\.png$/);
+          const aTime = aMatch ? parseInt(aMatch[1], 10) : 0;
+          const bTime = bMatch ? parseInt(bMatch[1], 10) : 0;
+          return aTime - bTime;
+        });
+        const toDelete = screenshotFiles.slice(
+          0,
+          screenshotFiles.length - QwenClient.MAX_SCREENSHOTS
+        );
+        for (const file of toDelete) {
+          const fileUri = vscode.Uri.joinPath(
+            this.extensionContext.globalStorageUri,
+            file
+          );
+          try {
+            await vscode.workspace.fs.delete(fileUri);
+            QwenClient.outputChannel.appendLine(
+              `[QwenClient] Deleted old screenshot: ${fileUri.fsPath}`
+            );
+          } catch (err) {
+            QwenClient.outputChannel.appendLine(
+              `[Warning] [QwenClient] Failed to delete old screenshot: ${fileUri.fsPath} ${err}`
+            );
+          }
+        }
+      }
     } catch (error) {
-      console.error("[QwenClient] Failed to take screenshot:", error);
+      QwenClient.outputChannel.appendLine(
+        `[Error] [QwenClient] Failed to take screenshot: ${error}`
+      );
     }
   }
 }
