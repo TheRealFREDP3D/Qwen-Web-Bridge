@@ -64,7 +64,7 @@ export class QwenClient {
       await this.loadCookies();
 
       await this.page.goto("https://qwen.aliyun.com/chat", {
-        waitUntil: "domcontentloaded",
+        waitUntil: "networkidle0",
       });
 
       this.isInitialized = true;
