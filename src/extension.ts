@@ -38,6 +38,38 @@ export function activate(context: vscode.ExtensionContext) {
         );
     });
 
+    const clearCookiesCommand = vscode.commands.registerCommand(
+      "qwen-proxy.clearCookies",
+      async () => {
+        try {
+          await proxyServer?.clearCookies();
+          vscode.window.showInformationMessage(
+            "Qwen cookies cleared successfully"
+          );
+        } catch (error) {
+          vscode.window.showErrorMessage(
+            `Failed to clear Qwen cookies: ${error}`
+          );
+        }
+      }
+    );
+
+    const openBrowserCommand = vscode.commands.registerCommand(
+      "qwen-proxy.openBrowser",
+      async () => {
+        try {
+          await proxyServer?.openBrowser();
+          vscode.window.showInformationMessage(
+            "Qwen browser opened. Please login and then restart the proxy."
+          );
+        } catch (error) {
+          vscode.window.showErrorMessage(
+            `Failed to open Qwen browser: ${error}`
+          );
+        }
+      }
+    );
+
     // Auto-start if configured
     const config = vscode.workspace.getConfiguration('qwen-proxy');
     if (config.get('autoStart', true)) {
@@ -47,7 +79,13 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     // Register disposables
-    context.subscriptions.push(startCommand, stopCommand, statusCommand);
+    context.subscriptions.push(
+      startCommand,
+      stopCommand,
+      statusCommand,
+      clearCookiesCommand,
+      openBrowserCommand
+    );
 
     // Show status bar item
     const statusBarItem = vscode.window.createStatusBarItem(

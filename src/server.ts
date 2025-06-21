@@ -1,244 +1,271 @@
-import express from 'express';
-import cors from 'cors';
-import * as vscode from 'vscode';
-import * as http from 'http';
-import { QwenClient } from './qwen-client';
-import { OpenAIRequest, OpenAIResponse, OpenAIStreamResponse } from './types';
+import cors from "cors";
+import express from "express";
+import * as http from "http";
+import * as vscode from "vscode";
+import { QwenClient } from "./qwen-client";
+import { OpenAIRequest, OpenAIResponse, OpenAIStreamResponse } from "./types";
 
 export class QwenProxyServer {
-    private app: express.Application;
-    private server: http.Server | undefined;
-    private qwenClient: QwenClient;
-    private port: number;
-    private isServerRunning = false;
+  private app: express.Application;
+  private server: http.Server | undefined;
+  private qwenClient: QwenClient;
+  private port: number;
+  private isServerRunning = false;
 
-    constructor(private context: vscode.ExtensionContext) {
-        this.app = express();
-        this.qwenClient = new QwenClient();
-        
-        // Get configuration
-        const config = vscode.workspace.getConfiguration('qwen-proxy');
-        this.port = config.get('port', 3001);
-        
-        this.setupMiddleware();
-        this.setupRoutes();
-    }
+  constructor(private context: vscode.ExtensionContext) {
+    this.app = express();
+    this.qwenClient = new QwenClient(this.context);
 
-    private setupMiddleware() {
-        this.app.use(cors());
-        this.app.use(express.json());
-        
-        // Request logging
-        this.app.use((req, res, next) => {
-            console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-            next();
+    // Get configuration
+    const config = vscode.workspace.getConfiguration("qwen-proxy");
+    this.port = config.get("port", 3001);
+
+    this.setupMiddleware();
+    this.setupRoutes();
+  }
+
+  private setupMiddleware() {
+    this.app.use(cors());
+    this.app.use(express.json());
+
+    // Request logging
+    this.app.use((req, res, next) => {
+      console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+      next();
+    });
+  }
+
+  private setupRoutes() {
+    // Health check
+    this.app.get("/health", (req, res) => {
+      res.json({
+        status: "ok",
+        timestamp: new Date().toISOString(),
+        qwenConnected: this.qwenClient.isConnected(),
+      });
+    });
+
+    // OpenAI-compatible chat completions endpoint
+    this.app.post("/v1/chat/completions", async (req, res) => {
+      try {
+        const openAIRequest: OpenAIRequest = req.body;
+
+        // Validate request
+        if (!openAIRequest.messages || !Array.isArray(openAIRequest.messages)) {
+          return res.status(400).json({
+            error: { message: "Invalid request: messages array required" },
+          });
+        }
+
+        // Handle streaming vs non-streaming
+        if (openAIRequest.stream) {
+          await this.handleStreamingRequest(openAIRequest, res);
+        } else {
+          await this.handleNonStreamingRequest(openAIRequest, res);
+        }
+      } catch (error) {
+        console.error("Error processing chat completion:", error);
+        res.status(500).json({
+          error: {
+            message: "Internal server error",
+            details: error instanceof Error ? error.message : "Unknown error",
+          },
         });
-    }
+      }
+    });
 
-    private setupRoutes() {
-        // Health check
-        this.app.get('/health', (req, res) => {
-            res.json({ 
-                status: 'ok', 
-                timestamp: new Date().toISOString(),
-                qwenConnected: this.qwenClient.isConnected()
-            });
-        });
+    // Models endpoint (OpenAI compatibility)
+    this.app.get("/v1/models", (req, res) => {
+      res.json({
+        object: "list",
+        data: [
+          {
+            id: "qwen-turbo",
+            object: "model",
+            created: Date.now(),
+            owned_by: "qwen-proxy",
+          },
+          {
+            id: "qwen-plus",
+            object: "model",
+            created: Date.now(),
+            owned_by: "qwen-proxy",
+          },
+        ],
+      });
+    });
 
-        // OpenAI-compatible chat completions endpoint
-        this.app.post('/v1/chat/completions', async (req, res) => {
-            try {
-                const openAIRequest: OpenAIRequest = req.body;
-                
-                // Validate request
-                if (!openAIRequest.messages || !Array.isArray(openAIRequest.messages)) {
-                    return res.status(400).json({
-                        error: { message: 'Invalid request: messages array required' }
-                    });
-                }
+    // Proxy status endpoint
+    this.app.get("/status", (req, res) => {
+      res.json({
+        server: "running",
+        qwenClient: this.qwenClient.isConnected()
+          ? "connected"
+          : "disconnected",
+        port: this.port,
+        uptime: process.uptime(),
+      });
+    });
+  }
 
-                // Handle streaming vs non-streaming
-                if (openAIRequest.stream) {
-                    await this.handleStreamingRequest(openAIRequest, res);
-                } else {
-                    await this.handleNonStreamingRequest(openAIRequest, res);
-                }
-            } catch (error) {
-                console.error('Error processing chat completion:', error);
-                res.status(500).json({
-                    error: { 
-                        message: 'Internal server error',
-                        details: error instanceof Error ? error.message : 'Unknown error'
-                    }
-                });
-            }
-        });
+  private async handleNonStreamingRequest(
+    request: OpenAIRequest,
+    res: express.Response
+  ) {
+    const response = await this.qwenClient.sendMessage(request);
 
-        // Models endpoint (OpenAI compatibility)
-        this.app.get('/v1/models', (req, res) => {
-            res.json({
-                object: 'list',
-                data: [
-                    {
-                        id: 'qwen-turbo',
-                        object: 'model',
-                        created: Date.now(),
-                        owned_by: 'qwen-proxy'
-                    },
-                    {
-                        id: 'qwen-plus',
-                        object: 'model',
-                        created: Date.now(),
-                        owned_by: 'qwen-proxy'
-                    }
-                ]
-            });
-        });
+    const openAIResponse: OpenAIResponse = {
+      id: `chatcmpl-${Date.now()}`,
+      object: "chat.completion",
+      created: Math.floor(Date.now() / 1000),
+      model: request.model || "qwen-turbo",
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: "assistant",
+            content: response,
+          },
+          finish_reason: "stop",
+        },
+      ],
+      usage: {
+        prompt_tokens: this.estimateTokens(request.messages),
+        completion_tokens: this.estimateTokens([
+          { role: "assistant", content: response },
+        ]),
+        total_tokens: 0,
+      },
+    };
 
-        // Proxy status endpoint
-        this.app.get('/status', (req, res) => {
-            res.json({
-                server: 'running',
-                qwenClient: this.qwenClient.isConnected() ? 'connected' : 'disconnected',
-                port: this.port,
-                uptime: process.uptime()
-            });
-        });
-    }
+    openAIResponse.usage.total_tokens =
+      openAIResponse.usage.prompt_tokens +
+      openAIResponse.usage.completion_tokens;
 
-    private async handleNonStreamingRequest(request: OpenAIRequest, res: express.Response) {
-        const response = await this.qwenClient.sendMessage(request);
-        
-        const openAIResponse: OpenAIResponse = {
-            id: `chatcmpl-${Date.now()}`,
-            object: 'chat.completion',
-            created: Math.floor(Date.now() / 1000),
-            model: request.model || 'qwen-turbo',
-            choices: [{
-                index: 0,
-                message: {
-                    role: 'assistant',
-                    content: response
-                },
-                finish_reason: 'stop'
-            }],
-            usage: {
-                prompt_tokens: this.estimateTokens(request.messages),
-                completion_tokens: this.estimateTokens([{ role: 'assistant', content: response }]),
-                total_tokens: 0
-            }
+    res.json(openAIResponse);
+  }
+
+  private async handleStreamingRequest(
+    request: OpenAIRequest,
+    res: express.Response
+  ) {
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "Access-Control-Allow-Origin": "*",
+    });
+
+    const streamId = `chatcmpl-${Date.now()}`;
+
+    try {
+      await this.qwenClient.sendMessageStream(request, (chunk: string) => {
+        const streamResponse: OpenAIStreamResponse = {
+          id: streamId,
+          object: "chat.completion.chunk",
+          created: Math.floor(Date.now() / 1000),
+          model: request.model || "qwen-turbo",
+          choices: [
+            {
+              index: 0,
+              delta: {
+                content: chunk,
+              },
+              finish_reason: null,
+            },
+          ],
         };
 
-        openAIResponse.usage.total_tokens = 
-            openAIResponse.usage.prompt_tokens + openAIResponse.usage.completion_tokens;
+        res.write(`data: ${JSON.stringify(streamResponse)}\n\n`);
+      });
 
-        res.json(openAIResponse);
+      // Send final chunk
+      const finalResponse: OpenAIStreamResponse = {
+        id: streamId,
+        object: "chat.completion.chunk",
+        created: Math.floor(Date.now() / 1000),
+        model: request.model || "qwen-turbo",
+        choices: [
+          {
+            index: 0,
+            delta: {},
+            finish_reason: "stop",
+          },
+        ],
+      };
+
+      res.write(`data: ${JSON.stringify(finalResponse)}\n\n`);
+      res.write("data: [DONE]\n\n");
+      res.end();
+    } catch (error) {
+      console.error("Streaming error:", error);
+      res.write(`data: {"error": "${error}"}\n\n`);
+      res.end();
+    }
+  }
+
+  private estimateTokens(
+    messages: Array<{ role: string; content: string }>
+  ): number {
+    const text = messages.map((m) => m.content).join(" ");
+    return Math.ceil(text.length / 4); // Rough estimate: 4 chars per token
+  }
+
+  async start(): Promise<void> {
+    if (this.isServerRunning) {
+      throw new Error("Server is already running");
     }
 
-    private async handleStreamingRequest(request: OpenAIRequest, res: express.Response) {
-        res.writeHead(200, {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-            'Access-Control-Allow-Origin': '*'
+    return new Promise((resolve, reject) => {
+      this.server = this.app.listen(this.port, () => {
+        this.isServerRunning = true;
+        console.log(`Qwen Proxy server started on port ${this.port}`);
+
+        // Initialize Qwen client
+        this.qwenClient.initialize().catch((error) => {
+          console.error("Failed to initialize Qwen client:", error);
         });
 
-        const streamId = `chatcmpl-${Date.now()}`;
-        
-        try {
-            await this.qwenClient.sendMessageStream(request, (chunk: string) => {
-                const streamResponse: OpenAIStreamResponse = {
-                    id: streamId,
-                    object: 'chat.completion.chunk',
-                    created: Math.floor(Date.now() / 1000),
-                    model: request.model || 'qwen-turbo',
-                    choices: [{
-                        index: 0,
-                        delta: {
-                            content: chunk
-                        },
-                        finish_reason: null
-                    }]
-                };
+        resolve();
+      });
 
-                res.write(`data: ${JSON.stringify(streamResponse)}\n\n`);
-            });
+      this.server.on("error", (error) => {
+        this.isServerRunning = false;
+        reject(error);
+      });
+    });
+  }
 
-            // Send final chunk
-            const finalResponse: OpenAIStreamResponse = {
-                id: streamId,
-                object: 'chat.completion.chunk',
-                created: Math.floor(Date.now() / 1000),
-                model: request.model || 'qwen-turbo',
-                choices: [{
-                    index: 0,
-                    delta: {},
-                    finish_reason: 'stop'
-                }]
-            };
-
-            res.write(`data: ${JSON.stringify(finalResponse)}\n\n`);
-            res.write('data: [DONE]\n\n');
-            res.end();
-        } catch (error) {
-            console.error('Streaming error:', error);
-            res.write(`data: {"error": "${error}"}\n\n`);
-            res.end();
-        }
+  async stop(): Promise<void> {
+    if (!this.server || !this.isServerRunning) {
+      return;
     }
 
-    private estimateTokens(messages: Array<{ role: string; content: string }>): number {
-        const text = messages.map(m => m.content).join(' ');
-        return Math.ceil(text.length / 4); // Rough estimate: 4 chars per token
-    }
+    return new Promise((resolve) => {
+      this.server!.close(() => {
+        this.isServerRunning = false;
+        console.log("Qwen Proxy server stopped");
+        resolve();
+      });
 
-    async start(): Promise<void> {
-        if (this.isServerRunning) {
-            throw new Error('Server is already running');
-        }
+      // Clean up Qwen client
+      this.qwenClient.cleanup();
+    });
+  }
 
-        return new Promise((resolve, reject) => {
-            this.server = this.app.listen(this.port, () => {
-                this.isServerRunning = true;
-                console.log(`Qwen Proxy server started on port ${this.port}`);
-                
-                // Initialize Qwen client
-                this.qwenClient.initialize().catch(error => {
-                    console.error('Failed to initialize Qwen client:', error);
-                });
-                
-                resolve();
-            });
+  isRunning(): boolean {
+    return this.isServerRunning;
+  }
 
-            this.server.on('error', (error) => {
-                this.isServerRunning = false;
-                reject(error);
-            });
-        });
-    }
+  getPort(): number {
+    return this.port;
+  }
 
-    async stop(): Promise<void> {
-        if (!this.server || !this.isServerRunning) {
-            return;
-        }
+  async clearCookies(): Promise<void> {
+    await this.qwenClient.clearCookies();
+  }
 
-        return new Promise((resolve) => {
-            this.server!.close(() => {
-                this.isServerRunning = false;
-                console.log('Qwen Proxy server stopped');
-                resolve();
-            });
-            
-            // Clean up Qwen client
-            this.qwenClient.cleanup();
-        });
-    }
-
-    isRunning(): boolean {
-        return this.isServerRunning;
-    }
-
-    getPort(): number {
-        return this.port;
-    }
+  async openBrowser(): Promise<void> {
+    await this.qwenClient.openBrowser();
+  }
 }
