@@ -41,6 +41,15 @@ export function activate(context: vscode.ExtensionContext) {
     const clearCookiesCommand = vscode.commands.registerCommand(
       "qwen-proxy.clearCookies",
       async () => {
+        const confirm = await vscode.window.showWarningMessage(
+          "Are you sure you want to clear Qwen cookies? This will log you out.",
+          { modal: true },
+          "Yes",
+          "No"
+        );
+        if (confirm !== "Yes") {
+          return;
+        }
         try {
           await proxyServer?.clearCookies();
           vscode.window.showInformationMessage(
