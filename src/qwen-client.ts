@@ -306,8 +306,9 @@ export class QwenClient {
     const startTime = Date.now();
 
     while (Date.now() - startTime < maxWaitTime) {
-      const contentElement = await this.page.$(SELECTORS.response);
-      if (contentElement) {
+      const responseElements = await this.page.$$(SELECTORS.response);
+      if (responseElements.length > 0) {
+        const contentElement = responseElements[responseElements.length - 1];
         const currentContent =
           (await this.page.evaluate((el) => el.textContent, contentElement)) ||
           "";
