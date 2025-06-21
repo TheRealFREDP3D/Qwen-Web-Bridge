@@ -125,8 +125,8 @@ export class QwenClient {
 
     await this.submitMessage();
 
-    const response = await this.waitForResponse();
-    return response;
+    return await this.waitForResponse();
+
   }
 
   public async sendMessageStream(
