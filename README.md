@@ -86,10 +86,29 @@ sequenceDiagram
 
 ## 📂 Roadmap
 
+- [x] Puppeteer successfully connects to Qwen website
+- [x] Basic message sending works reliably
+- [x] Authentication flow is robust and user-friendly
+- [x] Selectors are resilient to minor UI changes
+- [x] Comprehensive test coverage for the Qwen client
+- [x] Clear documentation for testing and troubleshooting
 - [ ] Add support for multiple chat UIs (Claude, Gemini, etc.)
 - [ ] Snapshot/restore chat sessions
 - [ ] Toggle between local LLM and web chat backends
 - [ ] Authentication via stored cookies/session replay
+
+---
+
+## [0.3.0] - Unreleased
+
+### Added
+- [ ]  (Add brief description of new features here)
+
+### Changed
+- [ ] (Add brief description of changes here)
+
+### Fixed
+- [ ] (Add brief description of bug fixes here)
 
 ---
 

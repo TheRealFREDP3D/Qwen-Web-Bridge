@@ -8,3 +8,5 @@ out/
 /.env
 /_DEV_
 /.history
+/.pytest_cache
+.cursorrules

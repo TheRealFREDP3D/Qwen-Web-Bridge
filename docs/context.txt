@@ -5,6 +5,19 @@
 ## Directory Structure
 ```
 Qwen-Web-Bridge
+├── docs
+│   ├── chat-completion-request.jpg
+│   ├── clear-cookies.jpg
+│   ├── context.txt
+│   ├── Open-Browser-to-Login.jpg
+│   ├── Phase 1 - Project Overview.pdf
+│   ├── PR-3-Sourcery-Review.jpg
+│   ├── Qwen-bridge-readme.pdf
+│   ├── streaming-responsesupport.jpg
+│   ├── v0.1.1-workflow.md
+│   ├── v0.1.1-workflow.png
+│   ├── v0.1.2-Project-Overview.drawio
+│   └── v0.1.2-Project-Overview.png
 ├── src
 │   ├── extension.ts
 │   ├── qwen-client.ts
@@ -13,9 +26,10 @@ Qwen-Web-Bridge
 ├── eslint.config,js
 ├── package-lock.json
 ├── package.json
-├── Project Overview.pdf
 ├── pyproject.toml
+├── README.md
 ├── requirements.txt
+├── SECURITY.md
 ├── tsconfig.json
 └── v0.1.1-CHANGELOG.md
 
