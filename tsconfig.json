@@ -5,15 +5,13 @@
     "outDir": "out",
     "lib": ["ES2020", "DOM"],
     "sourceMap": true,
-    "rootDir": "src",
+    "rootDir": ".",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true
   },
-  "exclude": [
-    "node_modules",
-    ".vscode-test"
-  ]
+  "exclude": ["node_modules", ".vscode-test"],
+  "include": ["src", "test"]
 }

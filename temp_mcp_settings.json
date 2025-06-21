@@ -1,0 +1,58 @@
+{
+  "mcpServers": {
+    "github.com/upstash/context7-mcp": {
+      "autoApprove": [],
+      "disabled": false,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "@upstash/context7-mcp@latest"]
+    },
+    "browser-tools-mcp": {
+      "autoApprove": [],
+      "disabled": true,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "cmd",
+      "args": ["/c", "npx", "@agentdeskai/browser-tools-mcp@latest"]
+    },
+    "github.com/zcaceres/fetch-mcp": {
+      "autoApprove": [],
+      "disabled": false,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "node",
+      "args": ["C:\\Users\\bloga\\Documents\\Cline\\MCP\\fetch-mcp\\dist\\index.js"]
+    },
+    "github.com/Saik0s/mcp-browser-use": {
+      "autoApprove": [],
+      "disabled": false,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "uv",
+      "args": ["--directory", "C:/Users/bloga/Documents/Cline/MCP/mcp-browser-use", "run", "mcp-server-browser-use"],
+      "env": {
+        "MCP_BROWSER_HEADLESS": "true",
+        "MCP_LLM_PROVIDER": "openai",
+        "MCP_LLM_MODEL_NAME": "gpt-4.1",
+        "MCP_SERVER_LOG_FILE": "C:/Users/bloga/Documents/Cline/MCP/mcp-browser-use/mcp-browser-use.log"
+      }
+    },
+    "github.com/AgentDeskAI/browser-tools-mcp": {
+      "autoApprove": [],
+      "disabled": false,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "cmd",
+      "args": ["/c", "npx", "@agentdeskai/browser-tools-mcp@latest"]
+    },
+    "github.com/NightTrek/Software-planning-mcp": {
+      "autoApprove": [],
+      "disabled": false,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "node",
+      "args": ["C:\\Users\\bloga\\Documents\\Cline\\MCP\\software-planning-tool\\build\\index.js"]
+    }
+  }
+}
