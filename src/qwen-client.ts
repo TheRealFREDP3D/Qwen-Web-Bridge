@@ -1,5 +1,7 @@
-import { Browser, BrowserContext, ElementHandle, Page } from "playwright-core";
+import * as puppeteer from "puppeteer";
+import { Browser, ElementHandle, Page } from "puppeteer";
 import * as vscode from "vscode";
+import { OpenAIRequest } from "./types";
 
 const SELECTORS = {
   login: 'button[class*="login"], a[href*="login"], .login-button',
@@ -29,93 +31,128 @@ const SELECTORS = {
 
 export class QwenClient {
   private browser: Browser | undefined;
-  private context: BrowserContext | undefined;
   private page: Page | undefined;
   private isInitialized = false;
   private config: vscode.WorkspaceConfiguration;
+  private extensionContext: vscode.ExtensionContext;
 
-  constructor() {
+  constructor(context: vscode.ExtensionContext) {
     this.config = vscode.workspace.getConfiguration("qwen-proxy");
+    this.extensionContext = context;
   }
 
-  public async openBrowser(proxyServer?: any): Promise<void> {
-    if (!proxyServer) {
-      vscode.window.showErrorMessage(
-        "Proxy server is not running. Please start the server first."
-      );
-      return;
-    }
-
+  public async initialize(): Promise<void> {
     if (this.isInitialized) {
-      console.log("Browser is already initialized.");
-      await this.page?.bringToFront();
+      console.log("Qwen client is already initialized.");
       return;
     }
 
-    const playwright = await import("playwright-core");
-    this.browser = await playwright.chromium.launch({
-      headless: this.config.get("headless"),
-      proxy: {
-        server: `http://localhost:${this.config.get("port")}`,
-      },
-      executablePath: this.config.get("browserExecutablePath")
-        ? this.config.get("browserExecutablePath")
-        : undefined,
-    });
+    try {
+      const headless = this.config.get("headless", true)
+        ? ("new" as const)
+        : (false as const);
+      const executablePath = this.config.get<string>("browserExecutablePath");
 
-    this.context = await this.browser.newContext({
-      storageState: this.config.get("storageState"),
-    });
+      this.browser = await puppeteer.launch({
+        headless,
+        executablePath: executablePath || undefined,
+      });
 
-    this.page = await this.context.newPage();
-    await this.page.goto("https://qwen.aliyun.com/chat", {
-      waitUntil: "networkidle",
-    });
+      this.page =
+        (await this.browser.pages())[0] || (await this.browser.newPage());
 
-    this.isInitialized = true;
-    console.log("Browser initialized successfully.");
+      await this.loadCookies();
+
+      await this.page.goto("https://qwen.aliyun.com/chat", {
+        waitUntil: "networkidle0",
+      });
+
+      this.isInitialized = true;
+      console.log("Qwen client initialized successfully.");
+    } catch (error) {
+      console.error("Failed to initialize Qwen client:", error);
+      this.isInitialized = false;
+      throw error;
+    }
   }
 
-  public async closeBrowser(): Promise<void> {
-    if (this.browser) {
-      await this.browser.close();
+  public async cleanup(): Promise<void> {
+    try {
+      if (this.isInitialized) {
+        await this.saveCookies();
+      }
+      if (this.browser) {
+        await this.browser.close();
+      }
+    } finally {
       this.browser = undefined;
-      this.context = undefined;
       this.page = undefined;
       this.isInitialized = false;
-      console.log("Browser closed.");
+      console.log("Qwen client cleaned up");
     }
   }
 
-  public async sendMessage(
-    prompt: string,
-    onChunk?: (chunk: string) => void
-  ): Promise<string> {
+  public async openBrowser(): Promise<void> {
+    await this.cleanup();
+    await this.config.update(
+      "headless",
+      false,
+      vscode.ConfigurationTarget.Global
+    );
+    await this.initialize();
+    await this.page?.bringToFront();
+    vscode.window.showInformationMessage(
+      "Browser opened for manual login. Please log in to Qwen and then close the browser."
+    );
+  }
+
+  public isConnected(): boolean {
+    return this.isInitialized && !!this.browser && !!this.page;
+  }
+
+  public async sendMessage(request: OpenAIRequest): Promise<string> {
     if (!this.isInitialized || !this.page) {
       throw new Error(
         "Browser not initialized. Please open the browser first."
       );
     }
 
-    try {
-      const filled = await this.fillChatInput(prompt);
-      if (!filled) {
-        throw new Error("Failed to find chat input field.");
-      }
-
-      await this.submitMessage();
-
-      if (onChunk) {
-        await this.pollResponse(onChunk);
-        return ""; // Streaming handles its own output
-      } else {
-        const response = await this.pollResponse();
-        return response;
-      }
-    } catch (error) {
-      console.error("Error sending message:", error);
-      throw error;
+    const prompt = this.convertMessagesToPrompt(request.messages);
+    const filled = await this.fillChatInput(prompt);
+    if (!filled) {
+      throw new Error("Failed to find chat input field.");
     }
+
+    await this.submitMessage();
+
+    return await this.waitForResponse();
+
+  }
+
+  public async sendMessageStream(
+    request: OpenAIRequest,
+    onChunk: (chunk: string) => void
+  ): Promise<void> {
+    if (!this.isInitialized || !this.page) {
+      throw new Error(
+        "Browser not initialized. Please open the browser first."
+      );
+    }
+
+    const prompt = this.convertMessagesToPrompt(request.messages);
+    const filled = await this.fillChatInput(prompt);
+    if (!filled) {
+      throw new Error("Failed to find chat input field.");
+    }
+
+    await this.submitMessage();
+    await this.waitForStreamingResponse(onChunk);
+  }
+
+  private convertMessagesToPrompt(
+    messages: Array<{ role: string; content: string }>
+  ): string {
+    return messages.map((m) => `${m.role}: ${m.content}`).join("\\n");
   }
 
   public async getHistory(count: number): Promise<string[]> {
@@ -129,7 +166,7 @@ export class QwenClient {
     const responseElements = await this.page.$$(SELECTORS.response);
 
     for (const element of responseElements.slice(-count)) {
-      const text = await element.textContent();
+      const text = await this.page.evaluate((el) => el.textContent, element);
       if (text) {
         history.push(text.trim());
       }
@@ -139,9 +176,61 @@ export class QwenClient {
   }
 
   public async clearCookies(): Promise<void> {
-    if (this.context) {
-      await this.context.clearCookies();
+    if (this.page) {
+      const client = await this.page.target().createCDPSession();
+      await client.send("Network.clearBrowserCookies");
+
+      const storagePath =
+        this.extensionContext.globalState.get<string>("qwenCookiePath");
+      if (storagePath) {
+        try {
+          await vscode.workspace.fs.delete(vscode.Uri.file(storagePath));
+          await this.extensionContext.globalState.update(
+            "qwenCookiePath",
+            undefined
+          );
+        } catch (e) {
+          console.error("Failed to delete cookie file", e);
+        }
+      }
       console.log("Cookies cleared.");
+    }
+  }
+
+  private async saveCookies(): Promise<void> {
+    if (this.page) {
+      const cookies = await this.page.cookies();
+      const storagePath = vscode.Uri.joinPath(
+        this.extensionContext.globalStorageUri,
+        "qwen-cookies.json"
+      ).fsPath;
+      await vscode.workspace.fs.writeFile(
+        vscode.Uri.file(storagePath),
+        Buffer.from(JSON.stringify(cookies))
+      );
+      await this.extensionContext.globalState.update(
+        "qwenCookiePath",
+        storagePath
+      );
+    }
+  }
+
+  private async loadCookies(): Promise<void> {
+    if (!this.page) return;
+    const storagePath =
+      this.extensionContext.globalState.get<string>("qwenCookiePath");
+    if (storagePath) {
+      try {
+        const cookiesBuffer = await vscode.workspace.fs.readFile(
+          vscode.Uri.file(storagePath)
+        );
+        const cookies = JSON.parse(cookiesBuffer.toString());
+        if (cookies && cookies.length) {
+          await this.page.setCookie(...cookies);
+        }
+      } catch (error) {
+        console.error("Failed to load cookies:", error);
+      }
     }
   }
 
@@ -157,7 +246,7 @@ export class QwenClient {
   private async fillChatInput(prompt: string): Promise<boolean> {
     const input = await this.find(SELECTORS.chatInput);
     if (!input) return false;
-    await input.fill(prompt);
+    await input.type(prompt);
     return true;
   }
 
@@ -171,10 +260,12 @@ export class QwenClient {
     }
   }
 
-  private async pollResponse(
-    onChunk?: (c: string) => void,
-    timeout = 30000
-  ): Promise<string> {
+  private async waitForResponse(timeout = 30000): Promise<string> {
+    if (!this.page) return "";
+    return this.pollResponse(timeout);
+  }
+
+  private async pollResponse(timeout = 30000): Promise<string> {
     if (!this.page) return "";
     const start = Date.now();
     let last = "";
@@ -186,15 +277,13 @@ export class QwenClient {
       }
       const cur = await this.page.evaluate((sel) => {
         const all = document.querySelectorAll(sel);
-        return all[all.length - 1]?.textContent || "";
+        return all.length > 0
+          ? all[all.length - 1]?.textContent?.trim() || ""
+          : "";
       }, SELECTORS.response);
 
-      if (cur.trim() !== last) {
-        const delta = cur.slice(last.length);
-        if (onChunk) {
-          onChunk(delta);
-        }
-        last = cur.trim();
+      if (cur !== last) {
+        last = cur;
       }
 
       const isComplete = await this.page.evaluate((sel) => {
@@ -202,8 +291,42 @@ export class QwenClient {
       }, SELECTORS.complete);
 
       if (isComplete) break;
-      await this.page.waitForTimeout(300);
+      await new Promise((resolve) => setTimeout(resolve, 300));
     }
     return last.trim();
+  }
+
+  private async waitForStreamingResponse(
+    onChunk: (chunk: string) => void
+  ): Promise<void> {
+    if (!this.page) throw new Error("Page not initialized");
+
+    let lastContent = "";
+    const maxWaitTime = 60000;
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWaitTime) {
+      const responseElements = await this.page.$$(SELECTORS.response);
+      if (responseElements.length > 0) {
+        const contentElement = responseElements[responseElements.length - 1];
+        const currentContent =
+          (await this.page.evaluate((el) => el.textContent, contentElement)) ||
+          "";
+        if (currentContent.trim() !== lastContent.trim()) {
+          const newChunk = currentContent.substring(lastContent.length);
+          if (newChunk) {
+            onChunk(newChunk);
+            lastContent = currentContent;
+          }
+        }
+      }
+
+      const isComplete = await this.page.evaluate((sel) => {
+        return !!document.querySelector(sel);
+      }, SELECTORS.complete);
+
+      if (isComplete) break;
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
   }
 }
