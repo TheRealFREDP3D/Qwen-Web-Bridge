@@ -1,6 +1,6 @@
+import * as puppeteer from "puppeteer";
 import * as vscode from "vscode";
 import { QwenClient } from "../src/qwen-client";
-import * as puppeteer from "puppeteer";
 
 // Mock VSCode ExtensionContext
 const mockContext: vscode.ExtensionContext = {
@@ -55,25 +55,30 @@ describe("QwenClient", () => {
     // Reset all mocks before each test
     jest.clearAllMocks();
 
+    // Always reset mockPage.goto to resolve for test isolation
+    mockPage.goto = jest.fn(() => Promise.resolve());
+
     // Explicitly mock vscode.window.createOutputChannel
-    createOutputChannelSpy = jest.spyOn(vscode.window, 'createOutputChannel').mockReturnValue({
-      appendLine: jest.fn(),
-      name: 'MockOutputChannel',
-      dispose: jest.fn(),
-      clear: jest.fn(),
-      show: jest.fn(),
-      hide: jest.fn(),
-      append: jest.fn(),
-      replace: jest.fn(), // Added missing 'replace' method
-      // Add missing properties for LogOutputChannel
-      logLevel: vscode.LogLevel.Info,
-      onDidChangeLogLevel: jest.fn(),
-      trace: jest.fn(),
-      debug: jest.fn(),
-      info: jest.fn(),
-      warn: jest.fn(),
-      error: jest.fn(),
-    });
+    createOutputChannelSpy = jest
+      .spyOn(vscode.window, "createOutputChannel")
+      .mockReturnValue({
+        appendLine: jest.fn(),
+        name: "MockOutputChannel",
+        dispose: jest.fn(),
+        clear: jest.fn(),
+        show: jest.fn(),
+        hide: jest.fn(),
+        append: jest.fn(),
+        replace: jest.fn(), // Added missing 'replace' method
+        // Add missing properties for LogOutputChannel
+        logLevel: vscode.LogLevel.Info,
+        onDidChangeLogLevel: jest.fn(),
+        trace: jest.fn(),
+        debug: jest.fn(),
+        info: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+      });
 
     client = new QwenClient(mockContext);
 
@@ -93,7 +98,10 @@ describe("QwenClient", () => {
   it("should initialize successfully and navigate to Qwen", async () => {
     await client.initialize();
     expect(puppeteer.launch).toHaveBeenCalledTimes(1);
-    expect(mockPage.goto).toHaveBeenCalledWith("https://qwen.aliyun.com/chat", expect.any(Object));
+    expect(mockPage.goto).toHaveBeenCalledWith(
+      "https://qwen.aliyun.com/chat",
+      expect.any(Object)
+    );
     expect((client as any).isInitialized).toBe(true);
   });
 
@@ -104,15 +112,31 @@ describe("QwenClient", () => {
   });
 
   it("should handle browser launch failure gracefully", async () => {
-    (puppeteer.launch as jest.Mock).mockRejectedValueOnce(new Error("Launch failed"));
-    await expect(client.initialize()).rejects.toThrow("Launch failed");
-    expect((client as any).isInitialized).toBe(false);
+    const originalLaunch = require("puppeteer").launch;
+    require("puppeteer").launch = jest
+      .fn()
+      .mockRejectedValue(new Error("Launch failed"));
+    const errorClient = new QwenClient(mockContext);
+    await expect(errorClient.initialize()).rejects.toThrow("Launch failed");
+    require("puppeteer").launch = originalLaunch;
   });
 
   it("should handle navigation failure gracefully", async () => {
-    mockPage.goto.mockRejectedValueOnce(new Error("Navigation failed"));
-    await expect(client.initialize()).rejects.toThrow("Navigation failed");
-    expect((client as any).isInitialized).toBe(false);
+    const originalLaunch = require("puppeteer").launch;
+    // Set mockPage.goto to reject for this test
+    mockPage.goto = jest.fn().mockRejectedValue(new Error("Navigation failed"));
+    require("puppeteer").launch = jest.fn().mockResolvedValue({
+      pages: jest.fn().mockResolvedValue([mockPage]),
+      newPage: jest.fn().mockResolvedValue({
+        goto: jest.fn().mockRejectedValue(new Error("Navigation failed")),
+        close: jest.fn(),
+        setCookie: jest.fn(),
+      }),
+      close: jest.fn(),
+    });
+    const errorClient = new QwenClient(mockContext);
+    await expect(errorClient.initialize()).rejects.toThrow("Navigation failed");
+    require("puppeteer").launch = originalLaunch;
   });
 
   it("should send message and return response", async () => {
@@ -120,12 +144,19 @@ describe("QwenClient", () => {
     (client as any).isInitialized = true; // Manually set to true for this test
     (client as any).fillChatInput = jest.fn(() => Promise.resolve(true));
     (client as any).submitMessage = jest.fn(() => Promise.resolve());
-    (client as any).waitForResponse = jest.fn(() => Promise.resolve("Mocked response"));
+    (client as any).waitForResponse = jest.fn(() =>
+      Promise.resolve("Mocked response")
+    );
 
-    const request = { model: "test-model", messages: [{ role: "user" as const, content: "Test message" }] };
+    const request = {
+      model: "test-model",
+      messages: [{ role: "user" as const, content: "Test message" }],
+    };
     const response = await client.sendMessage(request);
     expect(response).toBe("Mocked response");
-    expect((client as any).fillChatInput).toHaveBeenCalledWith("user: Test message");
+    expect((client as any).fillChatInput).toHaveBeenCalledWith(
+      "user: Test message"
+    );
     expect((client as any).submitMessage).toHaveBeenCalled();
     expect((client as any).waitForResponse).toHaveBeenCalled();
   });
@@ -141,11 +172,16 @@ describe("QwenClient", () => {
       return Promise.resolve();
     });
 
-    const request = { model: "test-model", messages: [{ role: "user" as const, content: "Streaming test" }] };
+    const request = {
+      model: "test-model",
+      messages: [{ role: "user" as const, content: "Streaming test" }],
+    };
     const chunks: string[] = [];
     await client.sendMessageStream(request, (chunk) => chunks.push(chunk));
 
-    expect((client as any).fillChatInput).toHaveBeenCalledWith("user: Streaming test");
+    expect((client as any).fillChatInput).toHaveBeenCalledWith(
+      "user: Streaming test"
+    );
     expect((client as any).submitMessage).toHaveBeenCalled();
     expect((client as any).waitForStreamingResponse).toHaveBeenCalled();
     expect(chunks).toEqual(["Mocked chunk 1", "Mocked chunk 2"]);
@@ -153,11 +189,15 @@ describe("QwenClient", () => {
 
   it("should get history", async () => {
     (client as any).isInitialized = true;
-    mockPage.$$ = jest.fn(() => Promise.resolve([
-      { textContent: "History item 1" },
-      { textContent: "History item 2" },
-    ] as any));
-    mockPage.evaluate = jest.fn<any, any>((fn: Function, el: any) => Promise.resolve(el.textContent));
+    mockPage.$$ = jest.fn(() =>
+      Promise.resolve([
+        { textContent: "History item 1" },
+        { textContent: "History item 2" },
+      ] as any)
+    );
+    mockPage.evaluate = jest.fn<any, any>((fn: Function, el: any) =>
+      Promise.resolve(el.textContent)
+    );
 
     const history = await client.getHistory(2);
     expect(history).toEqual(["History item 1", "History item 2"]);
@@ -166,18 +206,47 @@ describe("QwenClient", () => {
 
   it("should clear cookies", async () => {
     (client as any).isInitialized = true;
-    (mockContext.globalState.get as jest.Mock).mockReturnValueOnce("/mock/path/qwen-cookies.json");
+    (mockContext.globalState.get as jest.Mock).mockReturnValueOnce(
+      "/mock/path/qwen-cookies.json"
+    );
 
     await client.clearCookies();
     expect(mockPage.target).toHaveBeenCalled();
-    expect(mockContext.globalState.update).toHaveBeenCalledWith("qwenCookiePath", undefined);
-    expect(vscode.workspace.fs.delete).toHaveBeenCalledWith(vscode.Uri.file("/mock/path/qwen-cookies.json"));
+    expect(mockContext.globalState.update).toHaveBeenCalledWith(
+      "qwenCookiePath",
+      undefined
+    );
+    expect(vscode.workspace.fs.delete).toHaveBeenCalledWith(
+      vscode.Uri.file("/mock/path/qwen-cookies.json")
+    );
   });
 
   it("should save cookies when cleanup is called and client is initialized", async () => {
     (client as any).isInitialized = true;
-    mockPage.cookies.mockResolvedValueOnce([{ name: "test", value: "123", domain: "example.com", path: "/", expires: 123, httpOnly: false, secure: false, session: false } as any]);
-    mockPage.cookies.mockResolvedValueOnce([{ name: "test", value: "123", domain: "example.com", path: "/", expires: 123, httpOnly: false, secure: false, session: false } as any]);
+    mockPage.cookies.mockResolvedValueOnce([
+      {
+        name: "test",
+        value: "123",
+        domain: "example.com",
+        path: "/",
+        expires: 123,
+        httpOnly: false,
+        secure: false,
+        session: false,
+      } as any,
+    ]);
+    mockPage.cookies.mockResolvedValueOnce([
+      {
+        name: "test",
+        value: "123",
+        domain: "example.com",
+        path: "/",
+        expires: 123,
+        httpOnly: false,
+        secure: false,
+        session: false,
+      } as any,
+    ]);
     (client as any).saveCookies = jest.fn(() => Promise.resolve()); // Mock the private method
 
     await client.cleanup();
@@ -185,14 +254,49 @@ describe("QwenClient", () => {
   });
 
   it("should load cookies during initialization if path exists", async () => {
-    // Remove loadCookies mock for this specific test
-    (client as any).loadCookies = undefined;
+    // Do not set loadCookies to undefined; create a new QwenClient instance
+    const freshClient = new QwenClient(mockContext);
+    (mockContext.globalState.get as jest.Mock).mockReturnValueOnce(
+      "/mock/path/qwen-cookies.json"
+    );
+    (vscode.workspace.fs.readFile as jest.Mock).mockResolvedValueOnce(
+      Buffer.from(
+        JSON.stringify([
+          {
+            name: "test",
+            value: "123",
+            domain: "example.com",
+            path: "/",
+            expires: 123,
+            httpOnly: false,
+            secure: false,
+            session: false,
+          } as any,
+        ])
+      )
+    );
+    // Patch puppeteer.launch to ensure browser mock has pages method
+    const originalLaunch = require("puppeteer").launch;
+    require("puppeteer").launch = jest.fn().mockResolvedValue({
+      pages: jest.fn().mockResolvedValue([mockPage]),
+      newPage: jest.fn().mockResolvedValue(mockPage),
+      close: jest.fn(),
+    });
 
-    (mockContext.globalState.get as jest.Mock).mockReturnValueOnce("/mock/path/qwen-cookies.json");
-    (vscode.workspace.fs.readFile as jest.Mock).mockResolvedValueOnce(Buffer.from(JSON.stringify([{ name: "test", value: "123", domain: "example.com", path: "/", expires: 123, httpOnly: false, secure: false, session: false } as any])));
-
-    await client.initialize();
-    expect(vscode.workspace.fs.readFile).toHaveBeenCalledWith(vscode.Uri.file("/mock/path/qwen-cookies.json"));
-    expect(mockPage.setCookie).toHaveBeenCalledWith({ name: "test", value: "123", domain: "example.com", path: "/", expires: 123, httpOnly: false, secure: false, session: false } as any);
+    await freshClient.initialize();
+    expect(vscode.workspace.fs.readFile).toHaveBeenCalledWith(
+      vscode.Uri.file("/mock/path/qwen-cookies.json")
+    );
+    expect(mockPage.setCookie).toHaveBeenCalledWith({
+      name: "test",
+      value: "123",
+      domain: "example.com",
+      path: "/",
+      expires: 123,
+      httpOnly: false,
+      secure: false,
+      session: false,
+    } as any);
+    require("puppeteer").launch = originalLaunch;
   });
 });

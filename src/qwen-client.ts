@@ -381,9 +381,7 @@ export class QwenClient {
 
   private async takeScreenshot(name: string): Promise<void> {
     if (!this.page) {
-      QwenClient.outputChannel.appendLine(
-        "[Warning] [QwenClient] takeScreenshot: page is not initialized"
-      );
+      console.warn("[QwenClient] takeScreenshot: page is not initialized");
       return;
     }
     try {
@@ -391,10 +389,10 @@ export class QwenClient {
         this.extensionContext.globalStorageUri,
         `screenshot-${name}-${Date.now()}.png`
       );
-      await this.page.screenshot({ path: screenshotPath.fsPath as any });
-      QwenClient.outputChannel.appendLine(
-        `[QwenClient] Screenshot saved: ${screenshotPath.fsPath}`
-      );
+      await this.page.screenshot({
+        path: screenshotPath.fsPath as `${string}.png`,
+      });
+      console.log(`[QwenClient] Screenshot saved: ${screenshotPath.fsPath}`);
 
       // Retention policy: limit the number of screenshots
       const files = await vscode.workspace.fs.readDirectory(
@@ -429,20 +427,19 @@ export class QwenClient {
           );
           try {
             await vscode.workspace.fs.delete(fileUri);
-            QwenClient.outputChannel.appendLine(
+            console.log(
               `[QwenClient] Deleted old screenshot: ${fileUri.fsPath}`
             );
           } catch (err) {
-            QwenClient.outputChannel.appendLine(
-              `[Warning] [QwenClient] Failed to delete old screenshot: ${fileUri.fsPath} ${err}`
+            console.warn(
+              `[QwenClient] Failed to delete old screenshot: ${fileUri.fsPath}`,
+              err
             );
           }
         }
       }
     } catch (error) {
-      QwenClient.outputChannel.appendLine(
-        `[Error] [QwenClient] Failed to take screenshot: ${error}`
-      );
+      console.error("[QwenClient] Failed to take screenshot:", error);
     }
   }
 }

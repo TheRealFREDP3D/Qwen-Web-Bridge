@@ -12,9 +12,12 @@ export class QwenProxyServer {
   private port: number;
   private isServerRunning = false;
 
-  constructor(private context: vscode.ExtensionContext) {
+  constructor(
+    private context: vscode.ExtensionContext,
+    qwenClient?: QwenClient
+  ) {
     this.app = express();
-    this.qwenClient = new QwenClient(this.context);
+    this.qwenClient = qwenClient || new QwenClient(this.context);
 
     // Get configuration
     const config = vscode.workspace.getConfiguration("qwen-proxy");
