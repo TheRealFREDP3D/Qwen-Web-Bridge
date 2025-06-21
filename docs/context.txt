@@ -1,0 +1,47 @@
+# System Context
+
+## I am working on a software system with the following directory structure, architecture, and analyzed files:
+
+## Directory Structure
+```
+Qwen-Web-Bridge
+├── src
+│   ├── extension.ts
+│   ├── qwen-client.ts
+│   ├── server.ts
+│   └── types.ts
+├── eslint.config,js
+├── package-lock.json
+├── package.json
+├── Project Overview.pdf
+├── pyproject.toml
+├── requirements.txt
+├── tsconfig.json
+└── v0.1.1-CHANGELOG.md
+
+```
+
+## Mermaid Diagram
+```mermaid
+graph TD
+
+    501["User<br>External Actor"]
+    subgraph 495["External Systems"]
+        500["AI APIs<br>Qwen, OpenAI, etc."]
+    end
+    subgraph 496["VS Code Extension<br>TypeScript / VS Code API"]
+        497["Extension Entry Point<br>TypeScript / VS Code API"]
+        498["Proxy Server<br>TypeScript"]
+        499["Qwen Service Client<br>TypeScript"]
+        %% Edges at this level (grouped by source)
+        497["Extension Entry Point<br>TypeScript / VS Code API"] -->|starts| 498["Proxy Server<br>TypeScript"]
+        498["Proxy Server<br>TypeScript"] -->|uses| 499["Qwen Service Client<br>TypeScript"]
+    end
+    %% Edges at this level (grouped by source)
+    501["User<br>External Actor"] -->|activates| 497["Extension Entry Point<br>TypeScript / VS Code API"]
+    499["Qwen Service Client<br>TypeScript"] -->|calls| 500["AI APIs<br>Qwen, OpenAI, etc."]
+
+```
+
+## Analyzed Files
+

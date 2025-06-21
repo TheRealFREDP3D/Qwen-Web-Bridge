@@ -1,344 +1,209 @@
-import puppeteer, { Browser, Page } from 'puppeteer';
-import * as vscode from 'vscode';
-import { OpenAIRequest } from './types';
+import { Browser, BrowserContext, ElementHandle, Page } from "playwright-core";
+import * as vscode from "vscode";
+
+const SELECTORS = {
+  login: 'button[class*="login"], a[href*="login"], .login-button',
+  chatInput: [
+    'textarea[placeholder*="ask"], textarea[placeholder*="question"]',
+    'input[placeholder*="ask"], input[placeholder*="question"]',
+    ".chat-input textarea",
+    ".input-box textarea",
+    '[data-testid="chat-input"]',
+  ],
+  submit: [
+    'button[type="submit"]',
+    'button:has-text("Send")',
+    'button:has-text("发送")',
+    ".send-button",
+    '[data-testid="send-button"]',
+    'button[class*="send"]',
+  ],
+  response: '.message-content, .response-text, [data-testid="message-content"]',
+  complete: ".response-complete, .generation-done",
+  history: [
+    ".message-content",
+    ".response-text",
+    '[data-testid="message-content"]',
+  ],
+};
 
 export class QwenClient {
-    private browser: Browser | undefined;
-    private page: Page | undefined;
-    private isInitialized = false;
-    private config: vscode.WorkspaceConfiguration;
+  private browser: Browser | undefined;
+  private context: BrowserContext | undefined;
+  private page: Page | undefined;
+  private isInitialized = false;
+  private config: vscode.WorkspaceConfiguration;
 
-    constructor() {
-        this.config = vscode.workspace.getConfiguration('qwen-proxy');
+  constructor() {
+    this.config = vscode.workspace.getConfiguration("qwen-proxy");
+  }
+
+  public async openBrowser(proxyServer?: any): Promise<void> {
+    if (!proxyServer) {
+      vscode.window.showErrorMessage(
+        "Proxy server is not running. Please start the server first."
+      );
+      return;
     }
 
-    async initialize(): Promise<void> {
-        if (this.isInitialized) {
-            return;
-        }
-
-        try {
-            console.log('Initializing Qwen client...');
-            
-            // Launch browser
-            this.browser = await puppeteer.launch({
-                headless: this.config.get('headless', true),
-                args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-accelerated-2d-canvas',
-                    '--no-first-run',
-                    '--no-zygote',
-                    '--disable-gpu'
-                ]
-            });
-
-            this.page = await this.browser.newPage();
-            
-            // Set user agent to avoid detection
-            await this.page.setUserAgent(
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            );
-
-            // Navigate to Qwen
-            const qwenUrl = this.config.get('qwenUrl', 'https://qwen.alibaba.com');
-            console.log(`Navigating to ${qwenUrl}...`);
-            
-            await this.page.goto(qwenUrl, { 
-                waitUntil: 'networkidle2',
-                timeout: 30000 
-            });
-
-            // Wait for the page to load and check if login is required
-            await this.page.waitForTimeout(3000);
-            
-            // Check if we need to handle login or other setup
-            await this.handleInitialSetup();
-            
-            this.isInitialized = true;
-            console.log('Qwen client initialized successfully');
-            
-        } catch (error) {
-            console.error('Failed to initialize Qwen client:', error);
-            await this.cleanup();
-            throw error;
-        }
+    if (this.isInitialized) {
+      console.log("Browser is already initialized.");
+      await this.page?.bringToFront();
+      return;
     }
 
-    private async handleInitialSetup(): Promise<void> {
-        if (!this.page) return;
+    const playwright = await import("playwright-core");
+    this.browser = await playwright.chromium.launch({
+      headless: this.config.get("headless"),
+      proxy: {
+        server: `http://localhost:${this.config.get("port")}`,
+      },
+      executablePath: this.config.get("browserExecutablePath")
+        ? this.config.get("browserExecutablePath")
+        : undefined,
+    });
 
-        try {
-            // Check for login requirement
-            const loginSelector = 'button[class*="login"], a[href*="login"], .login-button';
-            const loginButton = await this.page.$(loginSelector);
-            
-            if (loginButton) {
-                console.log('Login required - please login manually or configure authentication');
-                // For now, we'll continue without login and see what happens
-            }
+    this.context = await this.browser.newContext({
+      storageState: this.config.get("storageState"),
+    });
 
-            // Look for chat input or main interface
-            const chatSelectors = [
-                'textarea[placeholder*="ask"], textarea[placeholder*="question"]',
-                'input[placeholder*="ask"], input[placeholder*="question"]',
-                '.chat-input textarea',
-                '.input-box textarea',
-                '[data-testid="chat-input"]'
-            ];
+    this.page = await this.context.newPage();
+    await this.page.goto("https://qwen.aliyun.com/chat", {
+      waitUntil: "networkidle",
+    });
 
-            let chatInput = null;
-            for (const selector of chatSelectors) {
-                chatInput = await this.page.$(selector);
-                if (chatInput) {
-                    console.log(`Found chat input with selector: ${selector}`);
-                    break;
-                }
-            }
+    this.isInitialized = true;
+    console.log("Browser initialized successfully.");
+  }
 
-            if (!chatInput) {
-                console.warn('Could not find chat input - selectors may need updating');
-            }
+  public async closeBrowser(): Promise<void> {
+    if (this.browser) {
+      await this.browser.close();
+      this.browser = undefined;
+      this.context = undefined;
+      this.page = undefined;
+      this.isInitialized = false;
+      console.log("Browser closed.");
+    }
+  }
 
-        } catch (error) {
-            console.error('Error during initial setup:', error);
-        }
+  public async sendMessage(
+    prompt: string,
+    onChunk?: (chunk: string) => void
+  ): Promise<string> {
+    if (!this.isInitialized || !this.page) {
+      throw new Error(
+        "Browser not initialized. Please open the browser first."
+      );
     }
 
-    async sendMessage(request: OpenAIRequest): Promise<string> {
-        if (!this.isInitialized) {
-            await this.initialize();
-        }
+    try {
+      const filled = await this.fillChatInput(prompt);
+      if (!filled) {
+        throw new Error("Failed to find chat input field.");
+      }
 
-        if (!this.page) {
-            throw new Error('Page not initialized');
-        }
+      await this.submitMessage();
 
-        try {
-            // Convert OpenAI messages to a single prompt
-            const prompt = this.convertMessagesToPrompt(request.messages);
-            
-            // Find and fill the chat input
-            const inputFilled = await this.fillChatInput(prompt);
-            if (!inputFilled) {
-                throw new Error('Could not find or fill chat input');
-            }
+      if (onChunk) {
+        await this.pollResponse(onChunk);
+        return ""; // Streaming handles its own output
+      } else {
+        const response = await this.pollResponse();
+        return response;
+      }
+    } catch (error) {
+      console.error("Error sending message:", error);
+      throw error;
+    }
+  }
 
-            // Submit the message
-            await this.submitMessage();
-
-            // Wait for and extract the response
-            const response = await this.waitForResponse();
-            
-            return response;
-
-        } catch (error) {
-            console.error('Error sending message to Qwen:', error);
-            throw error;
-        }
+  public async getHistory(count: number): Promise<string[]> {
+    if (!this.isInitialized || !this.page) {
+      throw new Error(
+        "Browser not initialized. Please open the browser first."
+      );
     }
 
-    async sendMessageStream(
-        request: OpenAIRequest, 
-        onChunk: (chunk: string) => void
-    ): Promise<void> {
-        if (!this.isInitialized) {
-            await this.initialize();
-        }
+    const history: string[] = [];
+    const responseElements = await this.page.$$(SELECTORS.response);
 
-        if (!this.page) {
-            throw new Error('Page not initialized');
-        }
-
-        try {
-            const prompt = this.convertMessagesToPrompt(request.messages);
-            
-            const inputFilled = await this.fillChatInput(prompt);
-            if (!inputFilled) {
-                throw new Error('Could not find or fill chat input');
-            }
-
-            await this.submitMessage();
-
-            // Monitor for streaming response
-            await this.waitForStreamingResponse(onChunk);
-
-        } catch (error) {
-            console.error('Error streaming message from Qwen:', error);
-            throw error;
-        }
+    for (const element of responseElements.slice(-count)) {
+      const text = await element.textContent();
+      if (text) {
+        history.push(text.trim());
+      }
     }
 
-    private convertMessagesToPrompt(messages: Array<{ role: string; content: string }>): string {
-        return messages
-            .map(msg => {
-                switch (msg.role) {
-                    case 'system':
-                        return `System: ${msg.content}`;
-                    case 'user':
-                        return `User: ${msg.content}`;
-                    case 'assistant':
-                        return `Assistant: ${msg.content}`;
-                    default:
-                        return msg.content;
-                }
-            })
-            .join('\n\n');
+    return history;
+  }
+
+  public async clearCookies(): Promise<void> {
+    if (this.context) {
+      await this.context.clearCookies();
+      console.log("Cookies cleared.");
     }
+  }
 
-    private async fillChatInput(prompt: string): Promise<boolean> {
-        if (!this.page) return false;
+  private async find(selectorList: string[]): Promise<ElementHandle | null> {
+    if (!this.page) return null;
+    for (const s of selectorList) {
+      const h = await this.page.$(s);
+      if (h) return h;
+    }
+    return null;
+  }
 
-        const inputSelectors = [
-            'textarea[placeholder*="ask"], textarea[placeholder*="question"]',
-            'input[placeholder*="ask"], input[placeholder*="question"]',
-            '.chat-input textarea',
-            '.input-box textarea',
-            '[data-testid="chat-input"]',
-            'textarea:not([disabled])',
-            '.ant-input'
-        ];
+  private async fillChatInput(prompt: string): Promise<boolean> {
+    const input = await this.find(SELECTORS.chatInput);
+    if (!input) return false;
+    await input.fill(prompt);
+    return true;
+  }
 
-        for (const selector of inputSelectors) {
-            try {
-                const input = await this.page.$(selector);
-                if (input) {
-                    await input.click();
-                    await input.type(prompt);
-                    console.log(`Successfully filled input with selector: ${selector}`);
-                    return true;
-                }
-            } catch (error) {
-                console.log(`Failed to use selector ${selector}:`, error);
-            }
+  private async submitMessage(): Promise<void> {
+    if (!this.page) return;
+    const btn = await this.find(SELECTORS.submit);
+    if (btn) {
+      await btn.click();
+    } else {
+      await this.page.keyboard.press("Enter");
+    }
+  }
+
+  private async pollResponse(
+    onChunk?: (c: string) => void,
+    timeout = 30000
+  ): Promise<string> {
+    if (!this.page) return "";
+    const start = Date.now();
+    let last = "";
+    while (Date.now() - start < timeout) {
+      try {
+        await this.page.waitForSelector(SELECTORS.response, { timeout: 1000 });
+      } catch (e) {
+        // Continue polling
+      }
+      const cur = await this.page.evaluate((sel) => {
+        const all = document.querySelectorAll(sel);
+        return all[all.length - 1]?.textContent || "";
+      }, SELECTORS.response);
+
+      if (cur.trim() !== last) {
+        const delta = cur.slice(last.length);
+        if (onChunk) {
+          onChunk(delta);
         }
+        last = cur.trim();
+      }
 
-        return false;
+      const isComplete = await this.page.evaluate((sel) => {
+        return !!document.querySelector(sel);
+      }, SELECTORS.complete);
+
+      if (isComplete) break;
+      await this.page.waitForTimeout(300);
     }
-
-    private async submitMessage(): Promise<void> {
-        if (!this.page) return;
-
-        const submitSelectors = [
-            'button[type="submit"]',
-            'button:has-text("Send")',
-            'button:has-text("发送")',
-            '.send-button',
-            '[data-testid="send-button"]',
-            'button[class*="send"]'
-        ];
-
-        for (const selector of submitSelectors) {
-            try {
-                const button = await this.page.$(selector);
-                if (button) {
-                    await button.click();
-                    console.log(`Clicked submit button with selector: ${selector}`);
-                    return;
-                }
-            } catch (error) {
-                console.log(`Failed to click button ${selector}:`, error);
-            }
-        }
-
-        // Fallback: try Enter key
-        await this.page.keyboard.press('Enter');
-        console.log('Submitted message with Enter key');
-    }
-
-    private async waitForResponse(timeout = 30000): Promise<string> {
-        if (!this.page) throw new Error('Page not initialized');
-
-        const responseSelectors = [
-            '.message-content:last-child',
-            '.chat-message:last-child .message-text',
-            '.response-text',
-            '[data-testid="assistant-message"]:last-child',
-            '.ant-typography p'
-        ];
-
-        const startTime = Date.now();
-        
-        while (Date.now() - startTime < timeout) {
-            for (const selector of responseSelectors) {
-                try {
-                    const elements = await this.page.$$(selector);
-                    if (elements.length > 0) {
-                        const lastElement = elements[elements.length - 1];
-                        const text = await lastElement.evaluate(el => el.textContent || '');
-                        
-                        if (text.trim().length > 0) {
-                            console.log(`Got response with selector: ${selector}`);
-                            return text.trim();
-                        }
-                    }
-                } catch (error) {
-                    // Continue trying other selectors
-                }
-            }
-            
-            await this.page.waitForTimeout(500);
-        }
-
-        throw new Error('Timeout waiting for response');
-    }
-
-    private async waitForStreamingResponse(onChunk: (chunk: string) => void): Promise<void> {
-        if (!this.page) throw new Error('Page not initialized');
-
-        // This is a simplified streaming implementation
-        // In reality, you'd need to monitor DOM changes more carefully
-        let lastContent = '';
-        const maxWaitTime = 30000;
-        const startTime = Date.now();
-
-        while (Date.now() - startTime < maxWaitTime) {
-            try {
-                const currentContent = await this.waitForResponse(1000);
-                
-                if (currentContent !== lastContent) {
-                    const newChunk = currentContent.substring(lastContent.length);
-                    if (newChunk) {
-                        onChunk(newChunk);
-                        lastContent = currentContent;
-                    }
-                }
-                
-                // Check if response is complete (implementation depends on Qwen's UI)
-                const isComplete = await this.page.evaluate(() => {
-                    // Look for completion indicators
-                    return document.querySelector('.response-complete, .generation-done') !== null;
-                });
-                
-                if (isComplete) {
-                    break;
-                }
-                
-            } catch (error) {
-                if (lastContent) {
-                    break; // We got some content, consider it done
-                }
-                await this.page.waitForTimeout(500);
-            }
-        }
-    }
-
-    isConnected(): boolean {
-        return this.isInitialized && !!this.browser && !!this.page;
-    }
-
-    async cleanup(): Promise<void> {
-        try {
-            if (this.browser) {
-                await this.browser.close();
-            }
-        } catch (error) {
-            console.error('Error during cleanup:', error);
-        } finally {
-            this.browser = undefined;
-            this.page = undefined;
-            this.isInitialized = false;
-        }
-    }
+    return last.trim();
+  }
 }

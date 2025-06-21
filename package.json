@@ -17,15 +17,23 @@
     "commands": [
       {
         "command": "qwen-proxy.start",
-        "title": "Start Qwen Proxy Server"
+        "title": "Qwen Proxy: Start Server"
       },
       {
         "command": "qwen-proxy.stop",
-        "title": "Stop Qwen Proxy Server"
+        "title": "Qwen Proxy: Stop Server"
       },
       {
         "command": "qwen-proxy.status",
-        "title": "Check Qwen Proxy Status"
+        "title": "Qwen Proxy: Check Status"
+      },
+      {
+        "command": "qwen-proxy.clearCookies",
+        "title": "Qwen Proxy: Clear Cookies"
+      },
+      {
+        "command": "qwen-proxy.openBrowser",
+        "title": "Qwen Proxy: Open Browser to Login"
       }
     ],
     "configuration": {
@@ -44,7 +52,7 @@
         "qwen-proxy.autoStart": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically start proxy server when VSCode opens"
+          "description": "Automatically start the proxy server when the extension is activated."
         },
         "qwen-proxy.headless": {
           "type": "boolean",
@@ -63,9 +71,10 @@
     "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode": "^1.74.0",
-    "@types/node": "18.x",
+    "@types/cors": "^2.8.19",
     "@types/express": "^4.17.21",
+    "@types/node": "18.x",
+    "@types/vscode": "^1.74.0",
     "@typescript-eslint/eslint-plugin": "^6.13.0",
     "@typescript-eslint/parser": "^6.13.0",
     "@vscode/test-cli": "^0.0.4",
@@ -74,9 +83,9 @@
     "typescript": "^5.3.0"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "puppeteer": "^21.6.1",
+    "cors": "^2.8.5",
     "dotenv": "^16.3.1",
-    "cors": "^2.8.5"
+    "express": "^4.18.2",
+    "puppeteer": "^21.6.1"
   }
 }
