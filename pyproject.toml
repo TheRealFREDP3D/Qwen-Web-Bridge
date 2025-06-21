@@ -1,0 +1,4 @@
+# pyproject.toml
+[tool.uv]
+# UV configuration for Python projects - not needed for this Node.js project
+# but keeping for user preference consistency

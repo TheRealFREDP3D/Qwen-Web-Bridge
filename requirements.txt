@@ -1,0 +1,3 @@
+# requirements.txt
+# This project uses Node.js/TypeScript, but keeping for consistency
+# with user preferences for Python projects

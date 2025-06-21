@@ -1,0 +1,9 @@
+# .gitignore
+node_modules/
+out/
+.env
+*.vsix
+.vscode-test/
+*.log
+/.env
+/_DEV_
